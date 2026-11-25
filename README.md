@@ -1,18 +1,19 @@
 # Mis tareas (Columbia + UNISAL)
 
 Junta las tareas pendientes de tus dos aulas virtuales en una sola página para el
-teléfono, y se actualiza sola cada 3 horas con GitHub Actions (aunque tu PC esté apagado).
+teléfono, y se actualiza sola 3 veces al día (7:00, 13:00 y 20:00) con GitHub Actions (aunque tu PC esté apagado).
 
 - **Columbia** (Moodle): entra como la app Moodle y trae solo lo pendiente,
   igual que el bloque "Línea de tiempo".
-- **UNISAL** (Chamilo): entra a la plataforma, lee "Mi agenda" y descarta las
-  tareas que ya enviaste. También muestra exámenes y eventos de tus cursos.
+- **UNISAL** (Chamilo): entra a la plataforma, recorre la sección "Tareas" de
+  tus cursos actuales y descarta las que ya enviaste. Las tareas de PPS solo
+  cuentan si están en la sección de prácticas. También muestra exámenes de la agenda.
 
 Archivos:
 - `actualizar.py`: lee las dos plataformas y genera `docs/tareas.json`.
 - `docs/index.html`: la página (vencidas, hoy, mañana, 7 días, etc.). Tocas una
   tarea para ver el detalle y el cuadrito para marcarla como hecha.
-- `.github/workflows/actualizar.yml`: la corre cada 3 horas y la publica en GitHub Pages.
+- `.github/workflows/actualizar.yml`: la corre 3 veces al día y la publica en GitHub Pages.
 
 ## 1. Pon tus datos
 

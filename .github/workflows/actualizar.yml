@@ -1,0 +1,63 @@
+name: Actualizar tareas
+
+on:
+  schedule:
+    - cron: "7 10,16,23 * * *"   # 7:07, 13:07 y 20:07 en Paraguay (UTC-3)
+  workflow_dispatch:          # botón "Run workflow" para actualizar a mano
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # solo para el commit "mantener activo" (ver abajo)
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Restaura la última lista publicada, para que si una universidad falla
+      # se sigan mostrando sus tareas anteriores.
+      - name: Traer lista anterior
+        continue-on-error: true
+        run: |
+          URL="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/tareas.json"
+          curl -fsSL "$URL" -o docs/tareas.json || rm -f docs/tareas.json
+
+      - name: Descargar calendarios
+        env:
+          TAREAS_CONFIG: ${{ secrets.TAREAS_CONFIG }}
+        run: python actualizar.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      # GitHub apaga los workflows programados tras 60 días sin actividad en
+      # el repositorio. Si pasaron 50 días sin commits, hace uno vacío.
+      - name: Mantener activo
+        if: github.event_name == 'schedule'
+        run: |
+          ULTIMO=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - ULTIMO )) -gt $(( 50 * 86400 )) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Mantener activo el actualizador [skip ci]"
+            git push
+          fi
