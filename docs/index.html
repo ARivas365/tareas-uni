@@ -101,6 +101,47 @@
   }
   .fecha-larga { color: var(--muted); }
 
+  /* Selector de vista */
+  .vistas {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--chip);
+    border-radius: 12px; padding: 3px; margin: 0 0 10px;
+  }
+  .vistas button {
+    border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px;
+    padding: 7px; border-radius: 9px; cursor: pointer; display: flex; gap: 6px; justify-content: center; align-items: center;
+  }
+  .vistas button svg { width: 16px; height: 16px; }
+  .vistas button[aria-pressed="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+
+  /* Calendario */
+  .cal { background: var(--card); border-radius: 16px; padding: 10px 8px 8px; margin-top: 14px; box-shadow: var(--shadow); }
+  .cal-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px 6px; }
+  .cal-cab b { font-size: 16px; }
+  .cal-cab b::first-letter { text-transform: uppercase; }
+  .cal-nav { display: flex; gap: 6px; align-items: center; }
+  .cal-nav button {
+    border: 0; background: var(--chip); color: var(--ink); height: 34px; min-width: 34px; border-radius: 10px;
+    font: inherit; font-size: 13px; cursor: pointer; display: grid; place-items: center; padding: 0 10px;
+  }
+  .cal-nav button svg { width: 16px; height: 16px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-sem { text-align: center; font-size: 11px; color: var(--muted); padding: 4px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .cal-dia {
+    border: 0; background: transparent; border-radius: 10px; font: inherit; font-size: 14px; color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0 6px; cursor: pointer;
+    font-variant-numeric: tabular-nums; min-height: 48px;
+  }
+  .cal-dia .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; }
+  .cal-dia.fuera { opacity: .35; }
+  .cal-dia.atraso .n { color: var(--late); }
+  .cal-dia.hoy .n { box-shadow: inset 0 0 0 2px var(--today); font-weight: 700; }
+  .cal-dia.sel { background: var(--chip); }
+  .cal-dia.sel .n { background: var(--chip-on); color: var(--chip-on-ink); box-shadow: none; font-weight: 700; }
+  .puntos { display: flex; gap: 3px; height: 6px; align-items: center; }
+  .puntos i { width: 6px; height: 6px; border-radius: 50%; display: block; }
+  .puntos em { font-style: normal; font-size: 10px; line-height: 6px; color: var(--muted); }
+  .dia-vacio { color: var(--muted); font-size: 14px; padding: 6px 2px; }
+
   .vacio { text-align: center; color: var(--muted); padding: 40px 10px; }
   .vacio b { display: block; font-size: 18px; color: var(--ink); margin-bottom: 4px; }
   .pie { margin-top: 26px; display: flex; justify-content: center; }
@@ -120,6 +161,14 @@
   </header>
 
   <div class="resumen" id="resumen"></div>
+  <div class="vistas" role="group" aria-label="Vista">
+    <button data-vista="lista" aria-pressed="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Lista
+    </button>
+    <button data-vista="calendario" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendario
+    </button>
+  </div>
   <div class="filtros" id="filtros" role="group" aria-label="Filtrar por universidad"></div>
   <div id="avisos"></div>
   <main id="contenido"></main>
@@ -130,6 +179,7 @@
 (() => {
   const CLAVE_HECHAS = "tareas-hechas";
   const CLAVE_FILTRO = "tareas-filtro";
+  const CLAVE_VISTA = "tareas-vista";
   const DIA = 86400000;
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -138,6 +188,9 @@
   let hechas = leer(CLAVE_HECHAS, {});
   let filtro = leer(CLAVE_FILTRO, "todas");
   let verHechas = false;
+  let vista = leer(CLAVE_VISTA, "lista");
+  let mesVista = null;   // primer día del mes que muestra el calendario
+  let diaSel = null;     // día elegido en el calendario (Date a las 00:00)
   const abiertas = new Set();
 
   function leer(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } }
@@ -186,6 +239,106 @@
     const h = Math.round(min / 60);
     if (h < 48) return `hace ${h} h`;
     return `hace ${Math.round(h / 24)} días`;
+  }
+
+  function tarjeta(t, ahora, colores) {
+    const d = fechaDe(t);
+    const c = etiquetaCuando(t, d, ahora);
+    const hecha = !!hechas[t.id];
+    const vencida = d < ahora && !hecha;
+    const largo = d.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" }) + (t.todo_el_dia ? "" : " · " + hora(d));
+    return `
+        <article class="tarea ${hecha ? "hecha" : ""} ${vencida ? "late" : ""} ${abiertas.has(t.id) ? "abierta" : ""}" style="--uni:${esc(colores[t.uni] || "#888")}" data-id="${esc(t.id)}">
+          <button class="check" data-check aria-label="${hecha ? "Marcar como pendiente" : "Marcar como hecha"}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          </button>
+          <div class="cuerpo" data-toggle>
+            <div class="fila"><span class="titulo">${esc(t.titulo)}</span><span class="cuando ${hecha ? "" : c.cls}">${esc(c.txt)}</span></div>
+            <div class="meta"><span class="punto"></span>${esc([t.curso, filtro === "todas" ? t.uni : "", ({Cierre: "cierra", Examen: "examen", Evento: "evento"})[t.tipo] || ""].filter(Boolean).join(" · "))}</div>
+            <div class="detalle"><span class="fecha-larga">${esc(({Cierre: "Cierra el ", Examen: "Es el ", Evento: "Es el "})[t.tipo] || "Vence el ")}${esc(largo)}</span>${t.descripcion ? "\n" + esc(t.descripcion) : ""}${t.url ? `\n<a href="${esc(t.url)}" target="_blank" rel="noopener">Abrir en el aula virtual</a>` : ""}</div>
+          </div>
+        </article>`;
+  }
+
+  function htmlLista(mostrar, visibles, ahora, colores) {
+    const grupos = new Map();
+    for (const t of mostrar) {
+      const d = fechaDe(t);
+      const [clave, titulo] = hechas[t.id] && d < ahora ? ["hechas", "Hechas"] : grupoDe(d, ahora);
+      if (!grupos.has(clave)) grupos.set(clave, { titulo, items: [] });
+      grupos.get(clave).items.push(t);
+    }
+    // Las vencidas van al final: normalmente ya no se pueden entregar.
+    const orden = ["hoy", "manana", "semana", "mes", "despues", "late", "hechas"];
+    let html = "";
+    for (const clave of orden) {
+      const g = grupos.get(clave);
+      if (!g) continue;
+      html += `<h2 class="${clave === "late" ? "late" : ""}"><span>${g.titulo}</span><span>${g.items.length}</span></h2><div class="lista">`;
+      html += g.items.map((t) => tarjeta(t, ahora, colores)).join("") + `</div>`;
+    }
+    return html || `<div class="vacio"><b>${visibles.length ? "¡Todo al día!" : "No hay tareas"}</b>${visibles.length ? "No te queda nada pendiente." : "No hay fechas límite en los próximos meses."}</div>`;
+  }
+
+  const claveDia = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+  function htmlCalendario(mostrar, ahora, colores) {
+    const hoy = inicioDia(ahora);
+    if (!mesVista) mesVista = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    if (!diaSel) diaSel = hoy;
+
+    const porDia = new Map();
+    for (const t of mostrar) {
+      const k = claveDia(fechaDe(t));
+      if (!porDia.has(k)) porDia.set(k, []);
+      porDia.get(k).push(t);
+    }
+
+    // La grilla empieza el lunes de la semana del día 1 y cubre semanas completas.
+    const primero = new Date(mesVista);
+    const desfase = (primero.getDay() + 6) % 7;
+    const ultimo = new Date(primero.getFullYear(), primero.getMonth() + 1, 0);
+    const celdas = Math.ceil((desfase + ultimo.getDate()) / 7) * 7;
+
+    let grilla = ["L", "M", "M", "J", "V", "S", "D"].map((d) => `<div class="cal-sem" aria-hidden="true">${d}</div>`).join("");
+    for (let i = 0; i < celdas; i++) {
+      const dia = new Date(primero.getFullYear(), primero.getMonth(), 1 - desfase + i);
+      const tareas = porDia.get(claveDia(dia)) || [];
+      const pendientes = tareas.filter((t) => !hechas[t.id]);
+      const clases = [
+        "cal-dia",
+        dia.getMonth() !== primero.getMonth() ? "fuera" : "",
+        +dia === +hoy ? "hoy" : "",
+        +dia === +diaSel ? "sel" : "",
+        dia < hoy && pendientes.length ? "atraso" : "",
+      ].filter(Boolean).join(" ");
+      const puntos = tareas.slice(0, 3).map((t) => `<i style="background:${esc(colores[t.uni] || "#888")}${hechas[t.id] ? ";opacity:.35" : ""}"></i>`).join("")
+        + (tareas.length > 3 ? `<em>+</em>` : "");
+      const etiqueta = dia.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })
+        + (tareas.length ? `, ${tareas.length} ${tareas.length === 1 ? "tarea" : "tareas"}` : "");
+      grilla += `<button class="${clases}" data-dia="${+dia}" aria-label="${esc(etiqueta)}"><span class="n">${dia.getDate()}</span><span class="puntos">${puntos}</span></button>`;
+    }
+
+    const mesTxt = primero.toLocaleDateString("es", { month: "long", year: "numeric" });
+    const enMesActual = primero.getFullYear() === hoy.getFullYear() && primero.getMonth() === hoy.getMonth();
+    const flecha = (dir) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${dir < 0 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}"/></svg>`;
+    const delDia = (porDia.get(claveDia(diaSel)) || []).sort((a, b) => fechaDe(a) - fechaDe(b));
+    const tituloDia = diaSel.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" });
+
+    return `
+      <section class="cal" aria-label="Calendario">
+        <div class="cal-cab">
+          <b>${esc(mesTxt)}</b>
+          <div class="cal-nav">
+            ${enMesActual && +diaSel === +hoy ? "" : `<button data-hoy>Hoy</button>`}
+            <button data-mes="-1" aria-label="Mes anterior">${flecha(-1)}</button>
+            <button data-mes="1" aria-label="Mes siguiente">${flecha(1)}</button>
+          </div>
+        </div>
+        <div class="cal-grid">${grilla}</div>
+      </section>
+      <h2><span>${esc(tituloDia)}</span><span>${delDia.length || ""}</span></h2>
+      <div class="lista">${delDia.length ? delDia.map((t) => tarjeta(t, ahora, colores)).join("") : `<div class="dia-vacio">Nada que entregar este día.</div>`}</div>`;
   }
 
   async function cargar() {
@@ -240,45 +393,11 @@
       <div class="dato"><b>${nSemana}</b><span>en 7 días</span></div>
       <div class="dato late"><b>${nVencidas}</b><span>vencidas</span></div>`;
 
-    // Lista agrupada
     const mostrar = verHechas ? visibles : pendientes;
-    const grupos = new Map();
-    for (const t of mostrar) {
-      const d = fechaDe(t);
-      const [clave, titulo] = hechas[t.id] && d < ahora ? ["hechas", "Hechas"] : grupoDe(d, ahora);
-      if (!grupos.has(clave)) grupos.set(clave, { titulo, items: [] });
-      grupos.get(clave).items.push(t);
-    }
-    // Las vencidas van al final: normalmente ya no se pueden entregar.
-    const orden = ["hoy", "manana", "semana", "mes", "despues", "late", "hechas"];
-    let html = "";
-    for (const clave of orden) {
-      const g = grupos.get(clave);
-      if (!g) continue;
-      html += `<h2 class="${clave === "late" ? "late" : ""}"><span>${g.titulo}</span><span>${g.items.length}</span></h2><div class="lista">`;
-      for (const t of g.items) {
-        const d = fechaDe(t);
-        const c = etiquetaCuando(t, d, ahora);
-        const hecha = !!hechas[t.id];
-        const largo = d.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" }) + (t.todo_el_dia ? "" : " · " + hora(d));
-        html += `
-        <article class="tarea ${hecha ? "hecha" : ""} ${clave === "late" && !hecha ? "late" : ""} ${abiertas.has(t.id) ? "abierta" : ""}" style="--uni:${esc(colores[t.uni] || "#888")}" data-id="${esc(t.id)}">
-          <button class="check" data-check aria-label="${hecha ? "Marcar como pendiente" : "Marcar como hecha"}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-          </button>
-          <div class="cuerpo" data-toggle>
-            <div class="fila"><span class="titulo">${esc(t.titulo)}</span><span class="cuando ${hecha ? "" : c.cls}">${esc(c.txt)}</span></div>
-            <div class="meta"><span class="punto"></span>${esc([t.curso, filtro === "todas" ? t.uni : "", ({Cierre: "cierra", Examen: "examen", Evento: "evento"})[t.tipo] || ""].filter(Boolean).join(" · "))}</div>
-            <div class="detalle"><span class="fecha-larga">${esc(({Cierre: "Cierra el ", Examen: "Es el ", Evento: "Es el "})[t.tipo] || "Vence el ")}${esc(largo)}</span>${t.descripcion ? "\n" + esc(t.descripcion) : ""}${t.url ? `\n<a href="${esc(t.url)}" target="_blank" rel="noopener">Abrir en el aula virtual</a>` : ""}</div>
-          </div>
-        </article>`;
-      }
-      html += `</div>`;
-    }
-    if (!html) {
-      html = `<div class="vacio"><b>${visibles.length ? "¡Todo al día!" : "No hay tareas"}</b>${visibles.length ? "No te queda nada pendiente." : "No hay fechas límite en los próximos meses."}</div>`;
-    }
-    $("#contenido").innerHTML = html;
+    $("#contenido").innerHTML = vista === "calendario"
+      ? htmlCalendario(mostrar, ahora, colores)
+      : htmlLista(mostrar, visibles, ahora, colores);
+    document.querySelectorAll("[data-vista]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.vista === vista));
 
     const bv = $("#verHechas");
     bv.hidden = nHechas === 0;
@@ -292,6 +411,21 @@
     filtro = b.dataset.f; guardar(CLAVE_FILTRO, filtro); pintar();
   });
   $("#contenido").addEventListener("click", (e) => {
+    const dia = e.target.closest("[data-dia]");
+    if (dia) {
+      diaSel = new Date(+dia.dataset.dia);
+      if (diaSel.getMonth() !== mesVista.getMonth()) mesVista = new Date(diaSel.getFullYear(), diaSel.getMonth(), 1);
+      pintar(); return;
+    }
+    const mes = e.target.closest("[data-mes]");
+    if (mes) {
+      mesVista = new Date(mesVista.getFullYear(), mesVista.getMonth() + Number(mes.dataset.mes), 1);
+      const hoy = inicioDia(new Date());
+      const esMesActual = mesVista.getFullYear() === hoy.getFullYear() && mesVista.getMonth() === hoy.getMonth();
+      diaSel = esMesActual ? hoy : new Date(mesVista);
+      pintar(); return;
+    }
+    if (e.target.closest("[data-hoy]")) { mesVista = null; diaSel = null; pintar(); return; }
     const card = e.target.closest(".tarea");
     if (!card || e.target.closest("a")) return;
     const id = card.dataset.id;
@@ -302,6 +436,12 @@
       abiertas.has(id) ? abiertas.delete(id) : abiertas.add(id);
       card.classList.toggle("abierta");
     }
+  });
+  document.querySelector(".vistas").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-vista]");
+    if (!b || b.dataset.vista === vista) return;
+    vista = b.dataset.vista; guardar(CLAVE_VISTA, vista);
+    if (datos) pintar();
   });
   $("#verHechas").addEventListener("click", () => { verHechas = !verHechas; pintar(); });
   $("#recargar").addEventListener("click", cargar);
