@@ -1,0 +1,5 @@
+# Tus enlaces privados de Moodle: nunca subirlos
+config.json
+# Se genera en cada actualización (en GitHub se publica sin guardarse en el repo)
+docs/tareas.json
+__pycache__/

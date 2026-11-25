@@ -1,0 +1,26 @@
+{
+  "universidades": [
+    {
+      "nombre": "Columbia",
+      "tipo": "moodle",
+      "color": "#2f6fde",
+      "sitio": "https://aulavirtual.columbia.edu.py",
+      "usuario": "TU_USUARIO_COLUMBIA",
+      "clave": "TU_CONTRASEÑA_COLUMBIA"
+    },
+    {
+      "nombre": "UNISAL",
+      "tipo": "chamilo",
+      "color": "#d9480f",
+      "sitio": "https://evirtual-unisal.edu.py",
+      "usuario": "TU_USUARIO_UNISAL",
+      "clave": "TU_CONTRASEÑA_UNISAL",
+      "cursos": [
+        "Técnica Legislativa",
+        "Lógica Jurídica",
+        "Derecho Procesal Penal",
+        "Derecho Procesal Civil"
+      ]
+    }
+  ]
+}
