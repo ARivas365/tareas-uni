@@ -143,6 +143,14 @@
   .puntos i { width: 6px; height: 6px; border-radius: 50%; display: block; }
   .puntos em { font-style: normal; font-size: 10px; line-height: 6px; color: var(--muted); }
   .dia-vacio { color: var(--muted); font-size: 14px; padding: 6px 2px; }
+  /* Exámenes: rombo en el calendario e ícono en lugar del cuadrito */
+  .puntos i.ex { width: 6px; height: 6px; border-radius: 1px; transform: rotate(45deg); margin: 0 1px; }
+  .cal-ley { display: flex; gap: 14px; justify-content: flex-end; padding: 6px 6px 0; font-size: 12px; color: var(--muted); }
+  .cal-ley span { display: inline-flex; align-items: center; gap: 6px; }
+  .cal-ley i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: block; }
+  .cal-ley i.ex { border-radius: 1px; transform: rotate(45deg); }
+  .icono-examen { margin: 11px 0 0 10px; width: 26px; height: 26px; display: grid; place-items: center; color: var(--uni); }
+  .icono-examen svg { width: 22px; height: 22px; }
 
   .vacio { text-align: center; color: var(--muted); padding: 40px 10px; }
   .vacio b { display: block; font-size: 18px; color: var(--ink); margin-bottom: 4px; }
@@ -221,7 +229,7 @@
     }
     if (n === 1) return { txt: "mañana" + h, cls: "today" };
     if (n <= 7) return { txt: diaCorto(d).split(" ")[0] + h, cls: "soon" };
-    return { txt: diaCorto(d), cls: "" };
+    return { txt: diaCorto(d) + (t.tipo === "Examen" ? h : ""), cls: "" };
   }
 
   function grupoDe(d, ahora) {
@@ -246,17 +254,22 @@
   function tarjeta(t, ahora, colores) {
     const d = fechaDe(t);
     const c = etiquetaCuando(t, d, ahora);
-    const hecha = !!hechas[t.id];
-    const vencida = d < ahora && !hecha;
+    const examen = t.tipo === "Examen";
+    const hecha = !examen && !!hechas[t.id];
+    const vencida = !examen && d < ahora && !hecha;
     const largo = d.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" }) + (t.todo_el_dia ? "" : " · " + hora(d));
-    return `
-        <article class="tarea ${hecha ? "hecha" : ""} ${vencida ? "late" : ""} ${abiertas.has(t.id) ? "abierta" : ""}" style="--uni:${esc(colores[t.uni] || "#888")}" data-id="${esc(t.id)}">
-          <button class="check" data-check aria-label="${hecha ? "Marcar como pendiente" : "Marcar como hecha"}">
+    // Un examen no se "entrega": en lugar del cuadrito lleva un ícono
+    const marca = examen
+      ? `<span class="icono-examen" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7.5L19 8v12.5H7z"/><path d="M14 3.5V8.5h5M10 13h6M10 16.5h4"/></svg></span>`
+      : `<button class="check" data-check aria-label="${hecha ? "Marcar como pendiente" : "Marcar como hecha"}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
-          </button>
+          </button>`;
+    return `
+        <article class="tarea ${examen ? "examen" : ""} ${hecha ? "hecha" : ""} ${vencida ? "late" : ""} ${abiertas.has(t.id) ? "abierta" : ""}" style="--uni:${esc(colores[t.uni] || "#888")}" data-id="${esc(t.id)}">
+          ${marca}
           <div class="cuerpo" data-toggle>
             <div class="fila"><span class="titulo">${esc(t.titulo)}</span><span class="cuando ${hecha ? "" : c.cls}">${esc(c.txt)}</span></div>
-            <div class="meta"><span class="punto"></span>${esc([t.curso, filtro === "todas" ? t.uni : "", ({Cierre: "cierra", Examen: "examen", Evento: "evento"})[t.tipo] || ""].filter(Boolean).join(" · "))}</div>
+            <div class="meta"><span class="punto"></span>${esc([t.curso, filtro === "todas" ? t.uni : "", ({Cierre: "cierra", Evento: "evento"})[t.tipo] || ""].filter(Boolean).join(" · "))}</div>
             <div class="detalle"><span class="fecha-larga">${esc(({Cierre: "Cierra el ", Examen: "Es el ", Evento: "Es el "})[t.tipo] || "Vence el ")}${esc(largo)}</span>${t.descripcion ? "\n" + esc(t.descripcion) : ""}${t.url ? `\n<a href="${esc(t.url)}" target="_blank" rel="noopener">Abrir en el aula virtual</a>` : ""}</div>
           </div>
         </article>`;
@@ -266,6 +279,7 @@
     const grupos = new Map();
     for (const t of mostrar) {
       const d = fechaDe(t);
+      if (t.tipo === "Examen" && d < ahora) continue; // un examen pasado no es una tarea vencida
       const [clave, titulo] = hechas[t.id] && d < ahora ? ["hechas", "Hechas"] : grupoDe(d, ahora);
       if (!grupos.has(clave)) grupos.set(clave, { titulo, items: [] });
       grupos.get(clave).items.push(t);
@@ -305,8 +319,9 @@
     let grilla = ["L", "M", "M", "J", "V", "S", "D"].map((d) => `<div class="cal-sem" aria-hidden="true">${d}</div>`).join("");
     for (let i = 0; i < celdas; i++) {
       const dia = new Date(primero.getFullYear(), primero.getMonth(), 1 - desfase + i);
-      const tareas = porDia.get(claveDia(dia)) || [];
-      const pendientes = tareas.filter((t) => !hechas[t.id]);
+      // los exámenes primero, para que su marca siempre se vea
+      const tareas = (porDia.get(claveDia(dia)) || []).slice().sort((a, b) => (b.tipo === "Examen") - (a.tipo === "Examen"));
+      const pendientes = tareas.filter((t) => t.tipo !== "Examen" && !hechas[t.id]);
       const clases = [
         "cal-dia",
         dia.getMonth() !== primero.getMonth() ? "fuera" : "",
@@ -314,17 +329,20 @@
         +dia === +diaSel ? "sel" : "",
         dia < hoy && pendientes.length ? "atraso" : "",
       ].filter(Boolean).join(" ");
-      const puntos = tareas.slice(0, 3).map((t) => `<i style="background:${esc(colores[t.uni] || "#888")}${hechas[t.id] ? ";opacity:.35" : ""}"></i>`).join("")
+      const puntos = tareas.slice(0, 3).map((t) => `<i class="${t.tipo === "Examen" ? "ex" : ""}" style="background:${esc(colores[t.uni] || "#888")}${hechas[t.id] ? ";opacity:.35" : ""}"></i>`).join("")
         + (tareas.length > 3 ? `<em>+</em>` : "");
+      const nEx = tareas.filter((t) => t.tipo === "Examen").length, nTa = tareas.length - nEx;
       const etiqueta = dia.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })
-        + (tareas.length ? `, ${tareas.length} ${tareas.length === 1 ? "tarea" : "tareas"}` : "");
+        + (nEx ? `, ${nEx === 1 ? "examen" : nEx + " exámenes"}` : "")
+        + (nTa ? `, ${nTa} ${nTa === 1 ? "tarea" : "tareas"}` : "");
       grilla += `<button class="${clases}" data-dia="${+dia}" aria-label="${esc(etiqueta)}"><span class="n">${dia.getDate()}</span><span class="puntos">${puntos}</span></button>`;
     }
 
     const mesTxt = primero.toLocaleDateString("es", { month: "long", year: "numeric" });
     const enMesActual = primero.getFullYear() === hoy.getFullYear() && primero.getMonth() === hoy.getMonth();
     const flecha = (dir) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${dir < 0 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}"/></svg>`;
-    const delDia = (porDia.get(claveDia(diaSel)) || []).sort((a, b) => fechaDe(a) - fechaDe(b));
+    const delDia = (porDia.get(claveDia(diaSel)) || [])
+      .sort((a, b) => (b.tipo === "Examen") - (a.tipo === "Examen") || fechaDe(a) - fechaDe(b));
     const tituloDia = diaSel.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" });
 
     return `
@@ -338,6 +356,7 @@
           </div>
         </div>
         <div class="cal-grid">${grilla}</div>
+        <div class="cal-ley" aria-hidden="true"><span><i></i>tarea</span><span><i class="ex"></i>examen</span></div>
       </section>
       <h2><span>${esc(tituloDia)}</span><span>${delDia.length || ""}</span></h2>
       <div class="lista">${delDia.length ? delDia.map((t) => tarjeta(t, ahora, colores)).join("") : `<div class="dia-vacio">Nada que entregar este día.</div>`}</div>`;
@@ -388,6 +407,7 @@
     let nVencidas = 0, nHoy = 0, nSemana = 0;
     for (const t of pendientes) {
       const d = fechaDe(t), n = difDias(d, ahora);
+      if (t.tipo === "Examen" && d < ahora) continue;
       if (d < ahora) nVencidas++; else if (n <= 1) nHoy++; else if (n <= 7) nSemana++;
     }
     $("#resumen").innerHTML = `

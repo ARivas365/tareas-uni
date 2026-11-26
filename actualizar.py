@@ -366,6 +366,11 @@ def tareas_desde_chamilo(uni: dict, desde: datetime, hasta: datetime) -> list[di
     # 2) Tareas de cada curso
     for (codigo, sesion), curso in cursos.items():
         es_seccion_pps = bool(RE_SECCION_PPS.search(normalizar(secciones.get(sesion, ""))))
+        # Materias cuyas tareas vencen el día del examen final (según examenes.json)
+        hasta_final = None if es_seccion_pps else next(
+            (e["_final"] for e in uni.get("_examenes", [])
+             if e.get("tareas_hasta_final") and e.get("_final") and coincide(curso, [normalizar(e["curso"])])),
+            None)
         q = urllib.parse.urlencode({
             "a": "get_work_student", "cidReq": codigo, "id_session": sesion, "gidReq": 0,
             "gradebook": 0, "origin": "", "_search": "false", "rows": 500, "page": 1,
@@ -379,9 +384,12 @@ def tareas_desde_chamilo(uni: dict, desde: datetime, hasta: datetime) -> list[di
             # columnas: ícono, título (enlace), fecha límite, fecha final, mi envío, ...
             fecha_txt = next((c.strip() for c in celdas[2:4]
                               if re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", c.strip())), "")
-            if not fecha_txt:
+            if hasta_final:
+                momento = hasta_final  # la fecha tope real es el examen final
+            elif not fecha_txt:
                 continue  # tarea sin fecha límite
-            momento = datetime.strptime(fecha_txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=tz).astimezone(timezone.utc)
+            else:
+                momento = datetime.strptime(fecha_txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=tz).astimezone(timezone.utc)
             if not (desde <= momento <= hasta):
                 continue
             mi_envio = texto_plano(celdas[4], 200) if len(celdas) > 4 else ""
@@ -476,6 +484,42 @@ def cargar_config() -> dict:
 
 LECTORES = {"ical": tareas_desde_ical, "api": tareas_desde_api, "chamilo": tareas_desde_chamilo}
 
+EXAMENES = BASE / "examenes.json"
+
+
+def cargar_examenes() -> list[dict]:
+    """Lee examenes.json (fechas en hora de Paraguay) y agrega las fechas como datetime UTC."""
+    if not EXAMENES.exists():
+        return []
+    tz = zona("America/Asuncion", -3)
+    lista = json.loads(EXAMENES.read_text(encoding="utf-8-sig")).get("examenes") or []
+    for e in lista:
+        for clave in ("parcial", "final"):
+            if e.get(clave):
+                e["_" + clave] = datetime.strptime(e[clave], "%Y-%m-%d %H:%M").replace(tzinfo=tz).astimezone(timezone.utc)
+    return lista
+
+
+def tareas_examenes(uni: dict) -> list[dict]:
+    """Convierte los exámenes de la universidad en elementos de la lista (tipo Examen)."""
+    salida = []
+    for e in uni.get("_examenes", []):
+        for clave, nombre in (("parcial", "Examen parcial"), ("final", "Examen final")):
+            if not e.get("_" + clave):
+                continue
+            salida.append({
+                "id": f"{slug(uni['nombre'])}:x-{slug(e['curso'])}-{clave}",
+                "uni": uni["nombre"],
+                "curso": e["curso"],
+                "titulo": nombre,
+                "tipo": "Examen",
+                "vence": iso(e["_" + clave]),
+                "todo_el_dia": False,
+                "descripcion": e.get("horario", ""),
+                "url": None,
+            })
+    return salida
+
 
 def main() -> int:
     config = cargar_config()
@@ -490,9 +534,11 @@ def main() -> int:
             previo = {}
     previo_unis = {u.get("nombre"): u for u in previo.get("universidades", [])}
 
+    examenes = cargar_examenes()
     todas, estado_unis = [], []
     for uni in config["universidades"]:
         nombre = uni["nombre"]
+        uni["_examenes"] = [e for e in examenes if normalizar(e.get("universidad", "")) == normalizar(nombre)]
         modo = uni["modo"]
         info = {"nombre": nombre, "color": uni["color"], "modo": modo}
         try:
@@ -508,6 +554,7 @@ def main() -> int:
             print(f"[error] {nombre}: {error} (se mantienen {len(tareas)} tareas anteriores)")
         estado_unis.append(info)
         todas.extend(tareas)
+        todas.extend(tareas_examenes(uni))  # las fechas de examen no dependen del aula virtual
 
     # sin duplicados y ordenadas por fecha
     unicas = {t["id"]: t for t in todas}

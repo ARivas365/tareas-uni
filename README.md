@@ -25,6 +25,13 @@ mayúsculas; basta una parte del nombre). Así se ignoran las materias de años
 anteriores. **Cuando empiece un semestre nuevo, cambia esa lista** (y el secreto
 `TAREAS_CONFIG` en GitHub). Si la quitas, se revisan todos tus cursos.
 
+### Exámenes
+
+`examenes.json` tiene las fechas de parciales y finales (hora de Paraguay). Aparecen en la
+lista y como un rombo en el calendario. Con `"tareas_hasta_final": true`, las tareas de esa
+materia vencen el día del examen final (así está Lógica Jurídica). **Cada semestre**,
+actualiza ese archivo con el nuevo calendario de exámenes y súbelo.
+
 ## 2. Pruébalo en tu PC
 
 ```powershell
