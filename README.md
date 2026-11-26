@@ -29,7 +29,9 @@ anteriores. **Cuando empiece un semestre nuevo, cambia esa lista** (y el secreto
 
 `examenes.json` tiene las fechas de parciales y finales (hora de Paraguay). Aparecen en la
 lista y como un rombo en el calendario. Con `"tareas_hasta_final": true`, las tareas de esa
-materia vencen el día del examen final (así está Lógica Jurídica). **Cada semestre**,
+materia vencen el día del examen final (así está Lógica Jurídica). En `"solo_examenes"`
+van las universidades cuyo semestre de tareas ya cerró (hoy: Columbia): no se lee su aula
+virtual y solo se muestran sus exámenes. Quítala de esa lista cuando empiece el semestre nuevo. **Cada semestre**,
 actualiza ese archivo con el nuevo calendario de exámenes y súbelo.
 
 ## 2. Pruébalo en tu PC

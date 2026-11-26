@@ -487,17 +487,22 @@ LECTORES = {"ical": tareas_desde_ical, "api": tareas_desde_api, "chamilo": tarea
 EXAMENES = BASE / "examenes.json"
 
 
-def cargar_examenes() -> list[dict]:
-    """Lee examenes.json (fechas en hora de Paraguay) y agrega las fechas como datetime UTC."""
+def cargar_examenes() -> tuple[list[dict], set[str]]:
+    """Lee examenes.json (fechas en hora de Paraguay) y agrega las fechas como datetime UTC.
+
+    Devuelve (exámenes, universidades marcadas como 'solo_examenes').
+    """
     if not EXAMENES.exists():
-        return []
+        return [], set()
     tz = zona("America/Asuncion", -3)
-    lista = json.loads(EXAMENES.read_text(encoding="utf-8-sig")).get("examenes") or []
+    datos = json.loads(EXAMENES.read_text(encoding="utf-8-sig"))
+    lista = datos.get("examenes") or []
+    solo = {normalizar(n) for n in datos.get("solo_examenes") or []}
     for e in lista:
         for clave in ("parcial", "final"):
             if e.get(clave):
                 e["_" + clave] = datetime.strptime(e[clave], "%Y-%m-%d %H:%M").replace(tzinfo=tz).astimezone(timezone.utc)
-    return lista
+    return lista, solo
 
 
 def tareas_examenes(uni: dict) -> list[dict]:
@@ -534,13 +539,20 @@ def main() -> int:
             previo = {}
     previo_unis = {u.get("nombre"): u for u in previo.get("universidades", [])}
 
-    examenes = cargar_examenes()
+    examenes, solo_examenes = cargar_examenes()
     todas, estado_unis = [], []
     for uni in config["universidades"]:
         nombre = uni["nombre"]
         uni["_examenes"] = [e for e in examenes if normalizar(e.get("universidad", "")) == normalizar(nombre)]
         modo = uni["modo"]
         info = {"nombre": nombre, "color": uni["color"], "modo": modo}
+        if normalizar(nombre) in solo_examenes:
+            # semestre cerrado: no se entra al aula virtual, solo se muestran los exámenes
+            info.update(modo="solo_examenes", ok=True, error=None, ultimo_ok=iso(t0), total=0)
+            print(f"[ok]    {nombre}: solo exámenes ({len(uni['_examenes'])} materias)")
+            estado_unis.append(info)
+            todas.extend(tareas_examenes(uni))
+            continue
         try:
             tareas = LECTORES[modo](uni, desde, hasta)
             info.update(ok=True, error=None, ultimo_ok=iso(t0), total=len(tareas))
